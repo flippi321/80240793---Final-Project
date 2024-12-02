@@ -1,11 +1,11 @@
 from GAN import BDI_GAN
 
 # Running the code
-generator_lr = 5e-4
-discriminator_lr = 5e-4
+generator_lr = 1e-4
+discriminator_lr = 1e-4
 model = BDI_GAN(g_lr=generator_lr, d_lr=discriminator_lr)
 
-build_gan = model.build_model(show_summary=True)
+build_gan = model.build_model(show_summary=False)
 
 # Train model
 model.train_model(
