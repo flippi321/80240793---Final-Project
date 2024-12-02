@@ -3,8 +3,9 @@ from GAN import BDI_GAN
 # Running the code
 generator_lr = 1e-4
 discriminator_lr = 1e-4
-model = BDI_GAN(g_lr=generator_lr, d_lr=discriminator_lr)
 
+# Create and build model
+model = BDI_GAN(g_lr=generator_lr, d_lr=discriminator_lr)
 build_gan = model.build_model(show_summary=False)
 
 # Train model
