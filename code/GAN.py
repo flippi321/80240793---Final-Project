@@ -1,7 +1,7 @@
 import os
 from PIL import Image
 import numpy as np
-from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, GlobalAveragePooling2D
+from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, AveragePooling2D
 from keras.models import Sequential, Model, load_model
 from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
@@ -134,36 +134,42 @@ class BDI_GAN():
         model.add(Conv2D(filters=8, kernel_size=3, padding="same"))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 128x128
-        model.add(Conv2D(filters=16, strides=2, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=16, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum = norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 64x64
-        model.add(Conv2D(filters=32, strides=2, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=32, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 32x32
-        model.add(Conv2D(filters=64, strides=2, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 16x16
-        model.add(Conv2D(filters=128, strides=2, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 8x8
-        model.add(Conv2D(filters=256, strides=2, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=256, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
+        model.add(AveragePooling2D())
 
         # Downsample to 4x4
         model.add(Flatten())
