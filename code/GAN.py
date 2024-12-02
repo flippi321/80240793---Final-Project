@@ -1,7 +1,6 @@
 from __future__ import print_function, division
-
 from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Dropout, Activation, ReLU
-from keras.models import Sequential, Model
+from keras.models import Sequential, Model, load_model
 from keras.optimizers import Adam
 
 class DCGAN():
@@ -146,5 +145,15 @@ class DCGAN():
         validity = model(img)
 
         return Model(img, validity)
+
+    def save_model(self, path):
+        self.discriminator.save(path + "/discriminator.keras")
+        self.generator.save(path + "/generator.keras")
+        self.combined.save(path + "/combined.keras")
+
+    def load_gan(self, path):
+        self.discriminator = load_model(path + "/discriminator.keras")
+        self.generator = load_model(path + "/generator.keras")
+        self.combined = load_model(path + "/combined.keras")
 
     
