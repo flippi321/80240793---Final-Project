@@ -28,7 +28,8 @@ class BDI_GAN():
         self.discriminator_dropout_rate = 0.25
         self.d_lr = d_lr
 
-        self.discriminator_losses = []
+        self.discriminator_real_losses = []
+        self.discriminator_fake_losses = []
         self.generator_losses = []
     
     def build_model(self, show_summary=False):
@@ -245,53 +246,26 @@ class BDI_GAN():
         half_batch_size = int(batch_size / 2)
 
         for epoch in range(epochs):
-            # ------------------- Train Discriminator ------------------- 
+          
+            # ------------------ Train Generator and Discriminator ------------------- 
+            (dis_loss_real, dis_loss_fake) = self.train_discriminator(half_batch_size, X_train)
+            gen_loss = self.train_generator(half_batch_size)
 
-            self.discriminator.trainable = True
+            self.discriminator_real_losses.append(dis_loss_real)
+            self.discriminator_fake_losses.append(dis_loss_fake)
+            self.generator_losses.append(gen_loss)
 
-            # Select a random batch of real images
-            # TODO Replace with sample?
-            idx = np.random.randint(0, X_train.shape[0], half_batch_size)
-            imgs = X_train[idx]
-
-            # Create a batch of fake images
-            gen_imgs = self.generate_images(half_batch_size)
-
-            # We divide the batch size into real and fake images
-            real_labels = np.ones((half_batch_size, 1)) 
-            fake_labels = np.zeros((half_batch_size, 1))           
-
-            # TODO Might be smart to add label smoothing, check this
-
-            # Train the discriminator
-            d_loss_real = self.discriminator.train_on_batch(imgs, real_labels)
-            d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake_labels)
-            d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-            # ------------------ Train Generator ------------------- 
-
-            self.discriminator.trainable = False
-
-            # Generate noise for the generator
-            noise = np.random.normal(0, 1, (half_batch_size, self.latent_dim))
-
-            # Train the generator
-            g_loss = self.combined.train_on_batch(noise, real_labels)
-
-            self.discriminator_losses.append(d_loss[0])
-            self.generator_losses.append(g_loss)
 
             # ------------------ Output Data from training ------------------- 
 
             if(print_interval > 0):
                 # Plot the progress
                 if(epoch % print_interval == 0):
-                    accuracy = d_loss[1]
-
+                    print("------------------------------------------------------")
                     print(f"                  Epoch {epoch}")
-                    print(f"Discriminator loss:       {d_loss[0]:.5f}")
-                    print(f"Discriminator accuracy:   {accuracy:%}")
-                    print(f"Generator loss:           {g_loss:.5f}")
+                    print(f"Discriminator real loss:  {dis_loss_real:.5f}")
+                    print(f"Discriminator fake loss:  {dis_loss_fake:.5f}")
+                    print(f"Generator loss:           {gen_loss:.5f}")
                     print("------------------------------------------------------")
 
                     # Get discriminator's predictions for a sample of generated images
@@ -311,3 +285,44 @@ class BDI_GAN():
                 # If at save interval, save the model
                 if (epoch % save_model_interval == 0 and save_model_interval > 0):
                     self.save_model(path=f"{temp_dir}/models", epoch=epoch)
+
+
+    def train_discriminator(self, half_batch_size, X_train):
+        self.discriminator.trainable = True
+
+        # Select a random batch of real images
+        idx = np.random.randint(0, X_train.shape[0], half_batch_size)
+        imgs = X_train[idx]
+
+        # Create a batch of fake images
+        gen_imgs = self.generate_images(half_batch_size)
+
+        # Combine real and fake images
+        combined_imgs = np.concatenate([imgs, gen_imgs], axis=0)
+
+        # Create corresponding labels for real and fake images
+        real_labels = np.ones((half_batch_size, 1))
+        fake_labels = np.zeros((half_batch_size, 1))
+        combined_labels = np.concatenate([real_labels, fake_labels], axis=0)
+
+        # Shuffle the combined dataset
+        shuffled_indices = np.random.permutation(combined_imgs.shape[0])
+        combined_imgs = combined_imgs[shuffled_indices]
+        combined_labels = combined_labels[shuffled_indices]
+
+        # Train the discriminator on the combined dataset
+        real_loss, fake_loss = self.discriminator.train_on_batch(combined_imgs, combined_labels)
+
+        return real_loss, fake_loss
+    
+    def train_generator(self, half_batch_size):
+        self.discriminator.trainable = False
+
+        # Generate noise for the generator
+        generator_labels = np.ones((half_batch_size, 1))
+        noise = np.random.normal(0, 1, (half_batch_size, self.latent_dim))
+
+        # Train the generator
+        loss = self.combined.train_on_batch(noise, generator_labels)
+
+        return loss
