@@ -7,7 +7,7 @@ from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
 
 class BDI_GAN():
-    def __init__(self):
+    def __init__(self, g_lr=5e-5, d_lr=5e-5):
         # Image size settings
         self.img_rows = 256
         self.img_cols = 256
@@ -15,17 +15,17 @@ class BDI_GAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)  # Our images are 256x256 rgb images
         
         # General GAN settings
-        self.latent_dim = 4096
+        self.latent_dim = 100
         self.label_smoothing = 0.2
         self.label_smoothing_end = 1000
 
         # Generator settings
         self.batch_normalisation_momentum = 0.9
-        self.g_lr = 2e-5
+        self.g_lr = g_lr
 
         # Discriminator settings
         self.relu_alpha=0.2
-        self.d_lr = 2e-5
+        self.d_lr = d_lr
 
         self.discriminator_losses = []
         self.generator_losses = []
@@ -35,12 +35,12 @@ class BDI_GAN():
         discriminator_optimizer = Adam(learning_rate=self.d_lr, beta_1=0.5, beta_2=0.99)
         combined_optimizer = Adam(learning_rate=self.g_lr, beta_1=0.5, beta_2=0.99)
 
-        # Build the discriminator
-        self.discriminator = self.build_discriminator()
-        self.discriminator.compile(loss='binary_crossentropy', optimizer=discriminator_optimizer, metrics=['accuracy'])
-
         # Build the generator
-        self.generator = self.build_generator()
+        self.generator = self.build_generator(show_summary=show_summary)
+
+        # Build the discriminator
+        self.discriminator = self.build_discriminator(show_summary=show_summary)
+        self.discriminator.compile(loss='binary_crossentropy', optimizer=discriminator_optimizer, metrics=['accuracy'])
 
         # The generator takes noise as input and generates imgs
         z = Input(shape=(self.latent_dim,))
@@ -57,40 +57,40 @@ class BDI_GAN():
         self.combined = Model(z, validity)
         self.combined.compile(loss='binary_crossentropy', optimizer=combined_optimizer)
 
-    def build_generator(self):
+    def build_generator(self, show_summary=False):
         model = Sequential()
         
         # Starting from an 8x8 dimension, upscale input from latent space
-        model.add(Dense(512 * 8 * 8, activation="relu", input_dim=self.latent_dim))
-        model.add(Reshape((8, 8, 512)))
+        model.add(Dense(256 * 8 * 8, activation="relu", input_dim=self.latent_dim))
+        model.add(Reshape((8, 8, 256)))
         
         # Upsample to 16x16
-        model.add(UpSampling2D())
-        model.add(Conv2D(256, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
-
-        # Upsample to 32x32
         model.add(UpSampling2D())
         model.add(Conv2D(128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
-        # Upsample to 64x64
+        # Upsample to 32x32
         model.add(UpSampling2D())
         model.add(Conv2D(64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
-        # Upsample to 128x128
+        # Upsample to 64x64
         model.add(UpSampling2D())
         model.add(Conv2D(32, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
-        # Upsample to 256x256
+        # Upsample to 128x128
         model.add(UpSampling2D())
         model.add(Conv2D(16, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
+        model.add(ReLU())
+
+        # Upsample to 256x256
+        model.add(UpSampling2D())
+        model.add(Conv2D(8, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
@@ -98,38 +98,39 @@ class BDI_GAN():
         model.add(Conv2D(self.channels, kernel_size=3, padding='same'))
         model.add(Activation("tanh"))
 
-        model.summary()
+        if(show_summary):
+            model.summary()
 
         noise = Input(shape=(self.latent_dim,))
         img = model(noise)
 
         return Model(noise, img)
 
-    def build_discriminator(self):
+    def build_discriminator(self, show_summary=False):
         model = Sequential()
 
         # We start with a photo of size 256x256
-        model.add(Conv2D(512, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
+        model.add(Conv2D(256, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
         # Downsample to 128x128
-        model.add(Conv2D(256, kernel_size=3, strides=2, padding="same"))
+        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
         # Downsample to 64x64
-        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.25))
-
-        # Downsample to 32x32
         model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.25))
 
-        # Downsample to 16x16
+        # Downsample to 32x32
         model.add(Conv2D(32, kernel_size=3, strides=2, padding="same"))
+        model.add(LeakyReLU(alpha=self.relu_alpha))
+        model.add(Dropout(0.25))
+
+        # Downsample to 16x16
+        model.add(Conv2D(16, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
@@ -137,7 +138,9 @@ class BDI_GAN():
         model.add(Flatten())
         model.add(Dense(1, activation='sigmoid'))
 
-        model.summary()
+        if(show_summary):
+            model.summary()
+
         img = Input(shape=self.img_shape)
         validity = model(img)
 
@@ -203,6 +206,8 @@ class BDI_GAN():
         for epoch in range(epochs):
             # ------------------- Train Discriminator ------------------- 
 
+            self.discriminator.trainable = True
+
             # Select a random batch of real images
             # TODO Replace with sample?
             idx = np.random.randint(0, X_train.shape[0], half_batch_size)
@@ -223,6 +228,8 @@ class BDI_GAN():
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
             # ------------------ Train Generator ------------------- 
+
+            self.discriminator.trainable = False
 
             # Generate noise for the generator
             noise = np.random.normal(0, 1, (half_batch_size, self.latent_dim))
