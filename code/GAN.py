@@ -1,7 +1,7 @@
 import os
 from PIL import Image
 import numpy as np
-from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Dropout, Activation, ReLU
+from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, GlobalAveragePooling2D
 from keras.models import Sequential, Model, load_model
 from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
@@ -24,7 +24,8 @@ class BDI_GAN():
         self.g_lr = g_lr
 
         # Discriminator settings
-        self.relu_alpha=0.2
+        self.discriminator_leaky_relu_alpha = 0.2
+        self.discriminator_dropout_rate = 0.25
         self.d_lr = d_lr
 
         self.discriminator_losses = []
@@ -59,44 +60,56 @@ class BDI_GAN():
 
     def build_generator(self, show_summary=False):
         model = Sequential()
+
+        # Settings for the discriminator
+        norm_momentum = 0.7
+
+        # Start with 1x1x4096 
+        model.add(Dense(1 * 1 * 4096, input_dim=self.latent_dim))
+        model.add(Reshape((1, 1, 4096)))
+        model.add(Conv2DTranspose(filters=256, kernel_size=4))
+        model.add(Activation('relu'))
+
+        # Upsample to 4x4
+        model.add(Conv2D(filters = 256, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
+        model.add(UpSampling2D())
         
-        # Starting from an 8x8 dimension, upscale input from latent space
-        model.add(Dense(256 * 8 * 8, activation="relu", input_dim=self.latent_dim))
-        model.add(Reshape((8, 8, 256)))
+        # Upsample to 8x8
+        model.add(Conv2D(filters = 128, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
+        model.add(UpSampling2D())
         
         # Upsample to 16x16
+        model.add(Conv2D(filters = 64, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
         model.add(UpSampling2D())
-        model.add(Conv2D(128, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
 
         # Upsample to 32x32
+        model.add(Conv2D(filters = 32, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
         model.add(UpSampling2D())
-        model.add(Conv2D(64, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
 
         # Upsample to 64x64
+        model.add(Conv2D(filters = 16, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
         model.add(UpSampling2D())
-        model.add(Conv2D(32, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
 
         # Upsample to 128x128
+        model.add(Conv2D(filters = 8, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
         model.add(UpSampling2D())
-        model.add(Conv2D(16, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
 
         # Upsample to 256x256
-        model.add(UpSampling2D())
-        model.add(Conv2D(8, kernel_size=3, padding="same"))
-        model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
-        model.add(ReLU())
-
-        # Final Conv2D layer to set the number of channels
-        model.add(Conv2D(self.channels, kernel_size=3, padding='same'))
-        model.add(Activation("tanh"))
+        model.add(Conv2D(filters = 3, kernel_size = 3, padding = 'same'))   # filters = 3, to get 256x256x3
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation("sigmoid"))
 
         if(show_summary):
             model.summary()
@@ -109,33 +122,55 @@ class BDI_GAN():
     def build_discriminator(self, show_summary=False):
         model = Sequential()
 
-        # We start with a photo of size 256x256
-        model.add(Conv2D(256, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.4))
+        # Settings for the discriminator
+        norm_momentum = 0.7
+        relu_alpha = 0.2
+        drop_rate = 0.25
+
+        # Add Gaussian noise
+        model.add(GaussianNoise(0.1, input_shape=[256, 256, 3]))
+
+        # 256x256x3
+        model.add(Conv2D(filters=8, kernel_size=3, padding="same"))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
 
         # Downsample to 128x128
-        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.4))
+        model.add(Conv2D(filters=16, strides=2, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum = norm_momentum))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
 
         # Downsample to 64x64
-        model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.25))
+        model.add(Conv2D(filters=32, strides=2, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
 
         # Downsample to 32x32
-        model.add(Conv2D(32, kernel_size=3, strides=2, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.25))
+        model.add(Conv2D(filters=64, strides=2, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
 
         # Downsample to 16x16
-        model.add(Conv2D(16, kernel_size=3, strides=2, padding="same"))
-        model.add(LeakyReLU(alpha=self.relu_alpha))
-        model.add(Dropout(0.4))
+        model.add(Conv2D(filters=128, strides=2, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
 
-        # Flatten and output layer for binary classification
+        # Downsample to 8x8
+        model.add(Conv2D(filters=256, strides=2, kernel_size=3, padding="same"))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(LeakyReLU(relu_alpha))
+        model.add(Dropout(drop_rate))
+
+        # Downsample to 4x4
         model.add(Flatten())
+        model.add(Dense(128))
+        model.add(LeakyReLU(0.2))
+
+        # Single-digit Classification
         model.add(Dense(1, activation='sigmoid'))
 
         if(show_summary):
@@ -217,7 +252,7 @@ class BDI_GAN():
             gen_imgs = self.generate_images(half_batch_size)
 
             # We divide the batch size into real and fake images
-            real_labels = np.ones((half_batch_size, 1))
+            real_labels = np.ones((half_batch_size, 1)) 
             fake_labels = np.zeros((half_batch_size, 1))           
 
             # TODO Might be smart to add label smoothing, check this
