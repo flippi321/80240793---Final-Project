@@ -12,7 +12,7 @@ class BDI_GAN():
         self.img_rows = 256
         self.img_cols = 256
         self.channels = 3
-        self.img_shape = (self.img_rows, self.img_cols, self.channels)  # Our images are 256x256 images
+        self.img_shape = (self.img_rows, self.img_cols, self.channels)  # Our images are 256x256 rgb images
         
         # General GAN settings
         self.latent_dim = 4096
@@ -61,36 +61,36 @@ class BDI_GAN():
         model = Sequential()
         
         # Starting from an 8x8 dimension, upscale input from latent space
-        model.add(Dense(128 * 8 * 8, activation="relu", input_dim=self.latent_dim))
-        model.add(Reshape((8, 8, 128)))
+        model.add(Dense(512 * 8 * 8, activation="relu", input_dim=self.latent_dim))
+        model.add(Reshape((8, 8, 512)))
         
         # Upsample to 16x16
         model.add(UpSampling2D())
-        model.add(Conv2D(128, kernel_size=3, padding="same"))
+        model.add(Conv2D(256, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
         # Upsample to 32x32
         model.add(UpSampling2D())
-        model.add(Conv2D(64, kernel_size=3, padding="same"))
+        model.add(Conv2D(128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
         # Upsample to 64x64
         model.add(UpSampling2D())
-        model.add(Conv2D(32, kernel_size=3, padding="same"))
+        model.add(Conv2D(64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
         # Upsample to 128x128
         model.add(UpSampling2D())
-        model.add(Conv2D(16, kernel_size=3, padding="same"))
+        model.add(Conv2D(32, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
         # Upsample to 256x256
         model.add(UpSampling2D())
-        model.add(Conv2D(8, kernel_size=3, padding="same"))
+        model.add(Conv2D(16, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=self.batch_normalisation_momentum))
         model.add(ReLU())
 
@@ -109,27 +109,27 @@ class BDI_GAN():
         model = Sequential()
 
         # We start with a photo of size 256x256
-        model.add(Conv2D(64, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
+        model.add(Conv2D(512, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
         # Downsample to 128x128
-        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
+        model.add(Conv2D(256, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
         # Downsample to 64x64
-        model.add(Conv2D(256, kernel_size=3, strides=2, padding="same"))
+        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.25))
 
         # Downsample to 32x32
-        model.add(Conv2D(512, kernel_size=3, strides=2, padding="same"))
+        model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.25))
 
         # Downsample to 16x16
-        model.add(Conv2D(1024, kernel_size=3, strides=2, padding="same"))
+        model.add(Conv2D(32, kernel_size=3, strides=2, padding="same"))
         model.add(LeakyReLU(alpha=self.relu_alpha))
         model.add(Dropout(0.4))
 
@@ -143,10 +143,12 @@ class BDI_GAN():
 
         return Model(img, validity)
 
-    def save_model(self, path):
-        self.discriminator.save(path + "/discriminator.keras")
-        self.generator.save(path + "/generator.keras")
-        self.combined.save(path + "/combined.keras")
+    def save_model(self, path, epoch=0):
+        output_dir = f"{path}/epoch_{epoch}/"
+        os.makedirs(output_dir, exist_ok=True)
+        self.discriminator.save(output_dir + "discriminator.keras")
+        self.generator.save(output_dir + "generator.keras")
+        self.combined.save(output_dir + "combined.keras")
 
     def load_gan(self, path):
         self.discriminator = load_model(path + "/discriminator.keras")
@@ -188,7 +190,7 @@ class BDI_GAN():
         print(f"Saved generated image at: {save_path}")
 
 
-    def train_model(self, epochs, batch_size=128, save_interval=50, input_dir="data", output_dir="images", print_interval=0):
+    def train_model(self, epochs, batch_size=128, output_image_interval=50, save_model_interval=1000, input_dir="data", output_dir="images", print_interval=0):
         # Load the dataset
         X_train = self.load_training_data(image_folder=input_dir, image_size=(self.img_rows, self.img_cols))
 
@@ -254,6 +256,10 @@ class BDI_GAN():
                     print(predictions[:5].flatten())  # Flatten to make it easier to read
                     print("------------------------------------------------------")
 
-                # TODO If at save interval, save generated images
-                if (epoch % save_interval == 0):
-                    self.save_generated_image(epoch, output_dir=temp_dir, name=f"img_gen_{epoch}")
+                # If at save interval, save generated images
+                if (epoch % output_image_interval == 0 and output_image_interval > 0):
+                    self.save_generated_image(epoch, output_dir=f"{temp_dir}/images", name=f"img_gen_{epoch}")
+
+                # If at save interval, save the model
+                if (epoch % save_model_interval == 0 and save_model_interval > 0):
+                    self.save_model(path=f"{temp_dir}/models", epoch=epoch)
