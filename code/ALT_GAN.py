@@ -260,10 +260,10 @@ class BDI_GAN():
 
     def train_model(self, epochs, batch_size=128, output_image_interval=50, save_model_interval=1000, input_dir="data", output_dir="images", print_interval=0):
         # Load the dataset of photos and preprocess them
-        X_photos = self.load_training_data(image_folder=f"{input_dir}/photos", image_size=(self.img_rows, self.img_cols))
+        X_photos = self.load_training_data(image_folder=f"{input_dir}/photo_jpg", image_size=(self.img_rows, self.img_cols))
 
         # Load the dataset of paintings as the discriminator's real inputs
-        X_paintings = self.load_training_data(image_folder=f"{input_dir}/paintings", image_size=(self.img_rows, self.img_cols))
+        X_paintings = self.load_training_data(image_folder=f"{input_dir}/monet_jpg", image_size=(self.img_rows, self.img_cols))
 
         # Prepare temp folder for continuous output
         temp_dir = f"{output_dir}/temp"
