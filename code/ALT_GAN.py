@@ -5,8 +5,9 @@ from keras.layers import Input, Dense, Flatten, BatchNormalization, LeakyReLU, U
 from keras.models import Sequential, Model, load_model
 from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
+import random
 
-class BDI_GAN():
+class ALT_GAN():
     def __init__(self, g_lr=5e-5, d_lr=5e-5):
         # Image size settings
         self.img_rows = 256
@@ -100,6 +101,12 @@ class BDI_GAN():
         model.add(UpSampling2D())
 
         # Upsample to 256x256
+        model.add(Conv2DTranspose(filters = 8, kernel_size = 3, padding = 'same'))
+        model.add(BatchNormalization(momentum=norm_momentum))
+        model.add(Activation('relu'))
+        model.add(UpSampling2D())
+
+        # Finish with 256x256x3
         model.add(Conv2DTranspose(filters = 3, kernel_size = 3, padding = 'same'))   # filters = 3, to get 256x256x3
         model.add(Activation("sigmoid"))
 
@@ -120,7 +127,7 @@ class BDI_GAN():
         drop_rate = 0.25
 
         # Add Gaussian noise
-        model.add(GaussianNoise(0.2, [self.img_rows, self.img_cols, self.channels]))
+        model.add(GaussianNoise(0.2, input_shape=[self.img_rows, self.img_cols, self.channels]))
 
         # 256x256x3
         model.add(Conv2D(filters=8, kernel_size=4, padding="same"))
@@ -130,7 +137,7 @@ class BDI_GAN():
 
         # Downsample to 128x128
         model.add(Conv2D(filters=16, kernel_size=4, padding="same"))
-        model.add(BatchNormalization(momentum = norm_momentum))
+        model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
         model.add(AveragePooling2D())
@@ -191,17 +198,28 @@ class BDI_GAN():
         self.generator = load_model(path + "/generator.keras")
         self.combined = load_model(path + "/combined.keras")
 
-    def load_training_data(self, image_folder="data", image_size=(256, 256)):
+    def load_training_data(self, training_dir="data/monet_jpg", max_size=32, image_size=(256, 256)):
+        # List all image files in the directory
+        all_images = os.listdir(training_dir)
+        
+        # Randomly select a batch of image files
+        if(len(all_images) > max_size):
+            selected_files = random.sample(all_images, max_size)
+        else:
+            selected_files = all_images
+
         images = []
-        # We add all images to the array
-        for img_file in os.listdir(image_folder):
-            img_path = os.path.join(image_folder, img_file)
+        # Load each selected image
+        for img_file in selected_files:
+            img_path = os.path.join(training_dir, img_file)
             try:
                 img = load_img(img_path, target_size=image_size, color_mode='rgb')
                 img = img_to_array(img)
                 images.append(img)
             except Exception as e:
                 print(f"Error loading image {img_path}: {e}")
+        
+        # Return the batch as a numpy array
         return np.array(images)
     
     def generate_images(self, n_images=1):
@@ -252,26 +270,29 @@ class BDI_GAN():
     def train_generator(self, half_batch_size, X_photos):
         idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
         input_photos = X_photos[idx_photos]
-
+        
         valid_labels = np.ones((half_batch_size, 1))
         loss = self.combined.train_on_batch(input_photos, valid_labels)
 
         return loss
 
     def train_model(self, epochs, batch_size=128, output_image_interval=50, save_model_interval=1000, input_dir="data", output_dir="images", print_interval=0):
-        # Load the dataset of photos and preprocess them
-        X_photos = self.load_training_data(image_folder=f"{input_dir}/photo_jpg", image_size=(self.img_rows, self.img_cols))
-
-        # Load the dataset of paintings as the discriminator's real inputs
-        X_paintings = self.load_training_data(image_folder=f"{input_dir}/monet_jpg", image_size=(self.img_rows, self.img_cols))
-
-        # Prepare temp folder for continuous output
-        temp_dir = f"{output_dir}/temp"
-
+        
         # We divide our batches 50/50 into real and fake images
         half_batch_size = int(batch_size / 2)
 
+        # Prepare temp folder for continuous output
+        temp_dir = f"{output_dir}/temp"
+        
+        
+        print("Loading data...")
+        # ------------------ Load testdata and generator photos ------------------- 
+        X_photos = self.load_training_data(training_dir=f"{input_dir}/photo_jpg", max_size=500, image_size=(self.img_rows, self.img_cols))
+        X_paintings = self.load_training_data(training_dir=f"{input_dir}/monet_jpg", max_size=500, image_size=(self.img_rows, self.img_cols))
+
+        print("Done!\nTraining model...")
         for epoch in range(epochs):
+            
             # ------------------ Train Discriminator ------------------- 
             d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)
 
@@ -279,7 +300,7 @@ class BDI_GAN():
             g_loss = self.train_generator(half_batch_size, X_photos)
 
             self.discriminator_real_losses.append(d_loss)
-            self.disciminator_fake_losses.append(d_accuracy)
+            self.discriminator_fake_losses.append(d_accuracy)
             self.generator_losses.append(g_loss)
 
            # ------------------ Output Data from training ------------------- 
