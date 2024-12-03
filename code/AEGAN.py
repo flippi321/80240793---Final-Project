@@ -281,10 +281,6 @@ class AEGAN():
         # We divide our batches 50/50 into real and fake images
         half_batch_size = int(batch_size / 2)
 
-        # Prepare temp folder for continuous output
-        temp_dir = f"{output_dir}/temp"
-        
-        
         print("Loading data...")
         # ------------------ Load testdata and generator photos ------------------- 
         X_photos = self.load_training_data(training_dir=f"{input_dir}/photo_jpg", max_size=500, image_size=(self.img_rows, self.img_cols))
@@ -340,8 +336,8 @@ class AEGAN():
 
                 # If at save interval, save generated images
                 if (epoch % output_image_interval == 0 and output_image_interval > 0):
-                    self.save_generated_image(epoch, output_dir=f"{temp_dir}/images", name=f"img_gen_{epoch}")
+                    self.save_generated_image(epoch, output_dir=f"{output_dir}/images", name=f"img_gen_{epoch}")
 
                 # If at save interval, save the model
                 if (epoch % save_model_interval == 0 and save_model_interval > 0):
-                    self.save_model(path=f"{temp_dir}/models", epoch=epoch)
+                    self.save_model(path=f"{output_dir}/models", epoch=epoch)
