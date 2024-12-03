@@ -106,10 +106,10 @@ class BDI_GAN():
         if(show_summary):
             model.summary()
 
-        noise = Input(shape=(self.latent_dim,))
-        img = model(noise)
+        photo = Input(shape=self.img_shape)
+        painting = self.generator(photo)
 
-        return Model(noise, img)
+        return Model(photo, painting)
 
     def build_discriminator(self, show_summary=False):
         model = Sequential()
