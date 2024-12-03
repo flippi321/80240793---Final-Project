@@ -1,8 +1,7 @@
 import os
 from PIL import Image
-from matplotlib import transforms
 import numpy as np
-from keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, AveragePooling2D
+from keras.layers import Input, Dense, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, AveragePooling2D
 from keras.models import Sequential, Model, load_model
 from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
@@ -45,20 +44,20 @@ class BDI_GAN():
         self.discriminator = self.build_discriminator(show_summary=show_summary)
         self.discriminator.compile(loss='binary_crossentropy', optimizer=discriminator_optimizer, metrics=['accuracy'])
 
-        # The generator takes noise as input and generates imgs
-        z = Input(shape=(self.latent_dim,))
-        img = self.generator(z)
+        # Input photo for generator
+        photo = Input(shape=self.img_shape)
+        painting = self.generator(photo)
 
-        # For the combined model we will only train the generator
+        # For the combined model, only train the generator
         self.discriminator.trainable = False
 
-        # The discriminator takes generated images as input and determines validity
-        validity = self.discriminator(img)
+        # The discriminator evaluates the painting
+        validity = self.discriminator(painting)
 
-        # The combined model  (stacked generator and discriminator)
-        # Trains the generator to fool the discriminator
-        self.combined = Model(z, validity)
+        # Combined model: generator and discriminator
+        self.combined = Model(photo, validity)
         self.combined.compile(loss='binary_crossentropy', optimizer=combined_optimizer)
+
 
     def build_generator(self, show_summary=False):
         model = Sequential()
@@ -69,7 +68,7 @@ class BDI_GAN():
         # ----- Downsample a 256x256 image -----
    
         # Downsample to 128x128
-        model.add(Conv2D(filters=256, kernel_size=4, input_shape=[self.img_rows, self.img_cols, channels], padding="same"))
+        model.add(Conv2D(filters=256, kernel_size=4, input_shape=[self.img_rows, self.img_cols, self.channels], padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(AveragePooling2D())
@@ -121,7 +120,7 @@ class BDI_GAN():
         drop_rate = 0.25
 
         # Add Gaussian noise
-        model.add(GaussianNoise(0.2, [self.img_rows, self.img_cols, channels]))
+        model.add(GaussianNoise(0.2, [self.img_rows, self.img_cols, self.channels]))
 
         # 256x256x3
         model.add(Conv2D(filters=8, kernel_size=4, padding="same"))
@@ -226,77 +225,73 @@ class BDI_GAN():
         pil_img.save(save_path)
         print(f"Saved generated image at: {save_path}")
 
-    def train_discriminator(self, half_batch_size, X_train):
-        self.discriminator.trainable = True
+    def train_discriminator(self, half_batch_size, X_paintings, X_photos):
+        # Select random real paintings
+        idx_paintings = np.random.randint(0, X_paintings.shape[0], half_batch_size)
+        real_paintings = X_paintings[idx_paintings]
 
-        # Select a random batch of real images
-        idx = np.random.randint(0, X_train.shape[0], half_batch_size)
-        imgs = X_train[idx]
+        # Select random photos for generator input
+        idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
+        input_photos = X_photos[idx_photos]
 
-        # Create a batch of fake images
-        gen_imgs = self.generate_images(half_batch_size)
+        # Generate fake paintings
+        fake_paintings = self.generator.predict(input_photos)
 
-        # Combine real and fake images
-        combined_imgs = np.concatenate([imgs, gen_imgs], axis=0)
+        # Combine real and fake paintings
+        combined_imgs = np.concatenate([real_paintings, fake_paintings], axis=0)
 
-        # Create corresponding labels for real and fake images
+        # Create corresponding labels
         real_labels = np.ones((half_batch_size, 1))
         fake_labels = np.zeros((half_batch_size, 1))
         combined_labels = np.concatenate([real_labels, fake_labels], axis=0)
 
-        # Shuffle the combined dataset
-        shuffled_indices = np.random.permutation(combined_imgs.shape[0])
-        combined_imgs = combined_imgs[shuffled_indices]
-        combined_labels = combined_labels[shuffled_indices]
-
-        # Train the discriminator on the combined dataset
-        real_loss, fake_loss = self.discriminator.train_on_batch(combined_imgs, combined_labels)
-
-        return real_loss, fake_loss
+        # Train the discriminator
+        (loss, accuracy) = self.discriminator.train_on_batch(combined_imgs, combined_labels)
+        return loss, accuracy
     
-    def train_generator(self, half_batch_size):
-        self.discriminator.trainable = False
+    def train_generator(self, half_batch_size, X_photos):
+        idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
+        input_photos = X_photos[idx_photos]
 
-        # Generate noise for the generator
-        generator_labels = np.ones((half_batch_size, 1))
-        noise = np.random.normal(0, 1, (half_batch_size, self.latent_dim))
-
-        # Train the generator
-        loss = self.combined.train_on_batch(noise, generator_labels)
+        valid_labels = np.ones((half_batch_size, 1))
+        loss = self.combined.train_on_batch(input_photos, valid_labels)
 
         return loss
 
     def train_model(self, epochs, batch_size=128, output_image_interval=50, save_model_interval=1000, input_dir="data", output_dir="images", print_interval=0):
-        # Load the dataset
-        X_train = self.load_training_data(image_folder=input_dir, image_size=(self.img_rows, self.img_cols))
+        # Load the dataset of photos and preprocess them
+        X_photos = self.load_training_data(image_folder=f"{input_dir}/photos", image_size=(self.img_rows, self.img_cols))
 
-        # Prepare temp folder for continious output
+        # Load the dataset of paintings as the discriminator's real inputs
+        X_paintings = self.load_training_data(image_folder=f"{input_dir}/paintings", image_size=(self.img_rows, self.img_cols))
+
+        # Prepare temp folder for continuous output
         temp_dir = f"{output_dir}/temp"
 
         # We divide our batches 50/50 into real and fake images
         half_batch_size = int(batch_size / 2)
 
         for epoch in range(epochs):
-          
-            # ------------------ Train Generator and Discriminator ------------------- 
-            (dis_loss_real, dis_loss_fake) = self.train_discriminator(half_batch_size, X_train)
-            gen_loss = self.train_generator(half_batch_size)
+            # ------------------ Train Discriminator ------------------- 
+            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)
 
-            self.discriminator_real_losses.append(dis_loss_real)
-            self.discriminator_fake_losses.append(dis_loss_fake)
-            self.generator_losses.append(gen_loss)
+            # ------------------ Train Generator ------------------- 
+            g_loss = self.train_generator(half_batch_size, X_photos)
 
+            self.discriminator_real_losses.append(d_loss)
+            self.disciminator_fake_losses.append(d_accuracy)
+            self.generator_losses.append(g_loss)
 
-            # ------------------ Output Data from training ------------------- 
+           # ------------------ Output Data from training ------------------- 
 
             if(print_interval > 0):
                 # Plot the progress
                 if(epoch % print_interval == 0):
                     print("------------------------------------------------------")
-                    print(f"                  Epoch {epoch}")
-                    print(f"Discriminator real loss:  {dis_loss_real:.5f}")
-                    print(f"Discriminator fake loss:  {dis_loss_fake:.5f}")
-                    print(f"Generator loss:           {gen_loss:.5f}")
+                    print(f"                Epoch {epoch}")
+                    print(f"Discriminator real loss:  {d_loss:.5f}")
+                    print(f"Discriminator fake loss:  {d_accuracy:.5f}")
+                    print(f"Generator loss:           {g_loss:.5f}")
                     print("------------------------------------------------------")
 
                     # ------------------ Print Predictions for 5 real and fake images ------------------- 
@@ -311,8 +306,8 @@ class BDI_GAN():
                     print(predictions.flatten())  # Flatten to make it easier to read
 
                     # Also sample real images and get their predicions
-                    idx = np.random.randint(0, X_train.shape[0], 5)
-                    sample_real_imgs = X_train[idx]
+                    idx = np.random.randint(0, X_paintings.shape[0], 5)
+                    sample_real_imgs = X_paintings[idx]
                     predictions = self.discriminator.predict(sample_real_imgs, verbose=0)
 
                     # Print the first few predictions
