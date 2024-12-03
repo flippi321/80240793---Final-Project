@@ -109,7 +109,6 @@ class BDI_GAN():
 
         # Upsample to 256x256
         model.add(Conv2D(filters = 3, kernel_size = 3, padding = 'same'))   # filters = 3, to get 256x256x3
-        model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation("sigmoid"))
 
         if(show_summary):
@@ -129,23 +128,23 @@ class BDI_GAN():
         drop_rate = 0.25
 
         # Add Gaussian noise
-        model.add(GaussianNoise(0.1, input_shape=[256, 256, 3]))
+        model.add(GaussianNoise(0.2, input_shape=[256, 256, 3]))
 
         # 256x256x3
-        model.add(Conv2D(filters=8, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=8, kernel_size=4, padding="same"))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
         model.add(AveragePooling2D())
 
         # Downsample to 128x128
-        model.add(Conv2D(filters=16, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=16, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum = norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
         model.add(AveragePooling2D())
 
         # Downsample to 64x64
-        model.add(Conv2D(filters=32, kernel_size=3, padding="same"))
+        model.add(Conv2D(filters=32, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
@@ -268,15 +267,27 @@ class BDI_GAN():
                     print(f"Generator loss:           {gen_loss:.5f}")
                     print("------------------------------------------------------")
 
+                    # ------------------ Print Predictions for 5 real and fake images ------------------- 
+
                     # Get discriminator's predictions for a sample of generated images
-                    sample_noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                    sample_noise = np.random.normal(0, 1, (5, self.latent_dim))
                     sample_gen_imgs = self.generator.predict(sample_noise, verbose=0)
                     predictions = self.discriminator.predict(sample_gen_imgs, verbose=0)
 
                     # Print the first few predictions
-                    print("Sample of discriminator's predictions on generated images (first 5):")
-                    print(predictions[:5].flatten())  # Flatten to make it easier to read
+                    print("5 generated images:")
+                    print(predictions.flatten())  # Flatten to make it easier to read
+
+                    # Also sample real images and get their predicions
+                    idx = np.random.randint(0, X_train.shape[0], 5)
+                    sample_real_imgs = X_train[idx]
+                    predictions = self.discriminator.predict(sample_real_imgs, verbose=0)
+
+                    # Print the first few predictions
+                    print("5 real images:")
+                    print(predictions.flatten())  # Flatten to make it easier to read
                     print("------------------------------------------------------")
+
 
                 # If at save interval, save generated images
                 if (epoch % output_image_interval == 0 and output_image_interval > 0):
