@@ -1,4 +1,4 @@
-from GAN import BDI_GAN
+from ALT_GAN import BDI_GAN
 
 # Running the code
 generator_lr = 1e-4
@@ -14,6 +14,6 @@ model.train_model(
     batch_size=32, 
     output_image_interval = 100, 
     save_model_interval = 1000, 
-    input_dir="data/monet_jpg", 
+    input_dir="data", 
     output_dir="output", 
     print_interval=10)

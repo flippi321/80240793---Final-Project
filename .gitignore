@@ -1,2 +1,3 @@
 virtual_environment
 output/
+code/__pycache__/
