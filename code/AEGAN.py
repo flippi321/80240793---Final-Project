@@ -7,7 +7,7 @@ from keras.preprocessing.image import img_to_array, load_img
 from keras.optimizers import Adam
 import random
 
-class ALT_GAN():
+class AEGAN():
     def __init__(self, g_lr=5e-5, d_lr=5e-5):
         # Image size settings
         self.img_rows = 256
@@ -72,19 +72,19 @@ class ALT_GAN():
         model.add(Conv2D(filters=256, kernel_size=3, input_shape=[self.img_rows, self.img_cols, self.channels], padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # We Downsample to 64x64
         model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # We Downsample to 32x32
         model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # ----- Upsample again -----
 
@@ -133,42 +133,42 @@ class ALT_GAN():
         model.add(Conv2D(filters=8, kernel_size=4, padding="same"))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 128x128
         model.add(Conv2D(filters=16, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 64x64
         model.add(Conv2D(filters=32, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 32x32
         model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 16x16
         model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 8x8
         model.add(Conv2D(filters=256, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(LeakyReLU(relu_alpha))
         model.add(Dropout(drop_rate))
-        model.add(AveragePooling2D())
+        model.add(AveragePooling2D(pool_size=(2, 2)))
 
         # Downsample to 4x4
         model.add(Flatten())
@@ -298,10 +298,11 @@ class ALT_GAN():
 
             # ------------------ Train Generator ------------------- 
             g_loss = self.train_generator(half_batch_size, X_photos)
+            print(g_loss)
 
             self.discriminator_real_losses.append(d_loss)
             self.discriminator_fake_losses.append(d_accuracy)
-            self.generator_losses.append(g_loss)
+            self.generator_losses.append(g_loss[0])
 
            # ------------------ Output Data from training ------------------- 
 
@@ -312,7 +313,7 @@ class ALT_GAN():
                     print(f"                Epoch {epoch}")
                     print(f"Discriminator real loss:  {d_loss:.5f}")
                     print(f"Discriminator fake loss:  {d_accuracy:.5f}")
-                    print(f"Generator loss:           {g_loss:.5f}")
+                    print(f"Generator loss:           {g_loss[0]:.5f}")
                     print("------------------------------------------------------")
 
                     # ------------------ Print Predictions for 5 real and fake images ------------------- 
