@@ -65,22 +65,22 @@ class BDI_GAN():
         # Settings for the discriminator
         norm_momentum = 0.7
 
-        # ----- Downsample a 256x256 image -----
+        # ----- Start with 256x256 image  -----
    
         # Downsample to 128x128
-        model.add(Conv2D(filters=256, kernel_size=4, input_shape=[self.img_rows, self.img_cols, self.channels], padding="same"))
+        model.add(Conv2D(filters=256, kernel_size=3, input_shape=[self.img_rows, self.img_cols, self.channels], padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(AveragePooling2D())
 
         # We Downsample to 64x64
-        model.add(Conv2D(filters=128, kernel_size=4, padding="same"))
+        model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(AveragePooling2D())
 
         # We Downsample to 32x32
-        model.add(Conv2D(filters=64, kernel_size=4, padding="same"))
+        model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(AveragePooling2D())
