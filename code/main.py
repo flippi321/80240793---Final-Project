@@ -1,14 +1,12 @@
 from AEGAN import AEGAN
 from GAN import BDI_GAN
 
-
-
 # Running the code
 generator_lr = 1e-5
 discriminator_lr = 1e-6
 
 # We note our model
-version = "GAN"
+version = "AEGAN"
 
 # Create and build model
 if version == "AEGAN":
