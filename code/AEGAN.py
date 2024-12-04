@@ -289,12 +289,12 @@ class AEGAN():
 
         print("Done!\nTraining model...")
         for epoch in range(epochs):
+            # ------------------ Train Discriminator ------------------- 
+            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)            
+            
             
             # ------------------ Train Generator ------------------- 
             g_loss = self.train_generator(half_batch_size, X_photos)
-
-            # ------------------ Train Discriminator ------------------- 
-            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)            
 
             # ------------------ Output Data from training ------------------- 
             self.discriminator_real_losses.append(d_loss)
