@@ -223,16 +223,19 @@ class AEGAN():
         # Return the batch as a numpy array
         return np.array(images)
     
-    def generate_images(self, n_images=1):
-        noise = np.random.normal(0, 1, (n_images, self.latent_dim))
-        return self.generator.predict(noise)
+    def generate_images(self, input_photo, n_images=1):
+        return self.generator.predict(input_photo)
 
-    def save_generated_image(self, epoch, output_dir="images", name="img_gen_temp"):
+    def save_generated_image(self, epoch, X_photos, output_dir="images", name="img_gen_temp"):
+        # Select random photos for generator input
+        idx_photos = np.random.randint(0, X_photos.shape[0], 1)
+        input_photo = X_photos[idx_photos]
+
         # Ensure the output directory exists
         os.makedirs(output_dir, exist_ok=True)
         
         # Generate a single image
-        gen_img = self.generate_images(n_images=1)[0]  # Take the first generated image
+        gen_img = self.generate_images(input_photo)[0]  # Take the first generated image
         
         # Rescale image values
         gen_img = 0.5 * gen_img + 0.5               # Rescale from [-1, 1] to [0, 1]
@@ -308,7 +311,7 @@ class AEGAN():
                     print(f"                Epoch {epoch}")
                     print(f"Discriminator real loss:  {d_loss:.5f}")
                     print(f"Discriminator fake loss:  {d_accuracy:.5f}")
-                    print(f"Generator loss:           {g_loss:.5f}")
+                    print(f"Generator loss:           {g_loss[0]:.5f}")
                     print("------------------------------------------------------")
 
                     # ------------------ Print Predictions for 5 real and fake images ------------------- 
@@ -336,7 +339,7 @@ class AEGAN():
 
                 # If at save interval, save generated images
                 if (epoch % output_image_interval == 0 and output_image_interval > 0):
-                    self.save_generated_image(epoch, output_dir=f"{output_dir}/images", name=f"img_gen_{epoch}")
+                    self.save_generated_image(epoch, X_photos, output_dir=f"{output_dir}/images", name=f"img_gen_{epoch}")
 
                 # If at save interval, save the model
                 if (epoch % save_model_interval == 0 and save_model_interval > 0):
