@@ -1,11 +1,12 @@
 import os
+import random
 from PIL import Image
 import numpy as np
-from keras.layers import Input, Dense, Flatten, BatchNormalization, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, GaussianNoise, AveragePooling2D
-from keras.models import Sequential, Model, load_model
-from keras.preprocessing.image import img_to_array, load_img
-from keras.optimizers import Adam
-import random
+from tensorflow import keras
+from keras._tf_keras.keras.layers import Input, BatchNormalization, GaussianNoise, Dense, Reshape, Flatten, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, AveragePooling2D, MaxPooling2D
+from keras._tf_keras.keras.models import Sequential, Model, load_model
+from keras._tf_keras.keras.utils import img_to_array, load_img
+from keras._tf_keras.keras.optimizers import Adam
 
 class AEGAN():
     def __init__(self, g_lr=5e-5, d_lr=5e-5):
@@ -72,19 +73,19 @@ class AEGAN():
         model.add(Conv2D(filters=256, kernel_size=3, input_shape=[self.img_rows, self.img_cols, self.channels], padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
         # We Downsample to 64x64
         model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
         # We Downsample to 32x32
         model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
         # ----- Upsample again -----
 
@@ -95,19 +96,19 @@ class AEGAN():
         model.add(UpSampling2D())
 
         # Upsample to 128x128
-        model.add(Conv2DTranspose(filters = 16, kernel_size = 3, padding = 'same'))
+        model.add(Conv2D(filters = 16, kernel_size = 3, padding = 'same'))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(UpSampling2D())
 
         # Upsample to 256x256
-        model.add(Conv2DTranspose(filters = 8, kernel_size = 3, padding = 'same'))
+        model.add(Conv2D(filters = 8, kernel_size = 3, padding = 'same'))
         model.add(BatchNormalization(momentum=norm_momentum))
         model.add(Activation('relu'))
         model.add(UpSampling2D())
 
         # Finish with 256x256x3
-        model.add(Conv2DTranspose(filters = 3, kernel_size = 3, padding = 'same'))   # filters = 3, to get 256x256x3
+        model.add(Conv2D(filters = self.channels, kernel_size = 3, padding = 'same'))   # filters = 3, to get 256x256x3
         model.add(Activation("sigmoid"))
 
         if(show_summary):
@@ -289,18 +290,16 @@ class AEGAN():
         print("Done!\nTraining model...")
         for epoch in range(epochs):
             
-            # ------------------ Train Discriminator ------------------- 
-            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)
-
             # ------------------ Train Generator ------------------- 
             g_loss = self.train_generator(half_batch_size, X_photos)
-            print(g_loss)
 
+            # ------------------ Train Discriminator ------------------- 
+            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)            
+
+            # ------------------ Output Data from training ------------------- 
             self.discriminator_real_losses.append(d_loss)
             self.discriminator_fake_losses.append(d_accuracy)
-            self.generator_losses.append(g_loss[0])
-
-           # ------------------ Output Data from training ------------------- 
+            self.generator_losses.append(g_loss)
 
             if(print_interval > 0):
                 # Plot the progress
@@ -309,14 +308,15 @@ class AEGAN():
                     print(f"                Epoch {epoch}")
                     print(f"Discriminator real loss:  {d_loss:.5f}")
                     print(f"Discriminator fake loss:  {d_accuracy:.5f}")
-                    print(f"Generator loss:           {g_loss[0]:.5f}")
+                    print(f"Generator loss:           {g_loss:.5f}")
                     print("------------------------------------------------------")
 
                     # ------------------ Print Predictions for 5 real and fake images ------------------- 
 
                     # Get discriminator's predictions for a sample of generated images
-                    sample_noise = np.random.normal(0, 1, (5, self.latent_dim))
-                    sample_gen_imgs = self.generator.predict(sample_noise, verbose=0)
+                    idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
+                    input_photos = X_photos[idx_photos]
+                    sample_gen_imgs = self.generator.predict(input_photos, verbose=0)
                     predictions = self.discriminator.predict(sample_gen_imgs, verbose=0)
 
                     # Print the first few predictions
