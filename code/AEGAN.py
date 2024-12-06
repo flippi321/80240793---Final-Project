@@ -2,7 +2,7 @@ import os
 import random
 from PIL import Image
 import numpy as np
-from tensorflow import keras
+import tensorflow as tf
 from keras._tf_keras.keras.layers import Input, BatchNormalization, GaussianNoise, Dense, Reshape, Flatten, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, AveragePooling2D, MaxPooling2D
 from keras._tf_keras.keras.models import Sequential, Model, load_model
 from keras._tf_keras.keras.utils import img_to_array, load_img
@@ -201,146 +201,118 @@ class AEGAN():
 
     def load_training_data(self, training_dir="data/monet_jpg", max_size=32, image_size=(256, 256)):
         # List all image files in the directory
-        all_images = os.listdir(training_dir)
+        all_images = tf.io.gfile.listdir(training_dir)
         
         # Randomly select a batch of image files
-        if(len(all_images) > max_size):
-            selected_files = random.sample(all_images, max_size)
-        else:
-            selected_files = all_images
+        selected_files = tf.random.shuffle(all_images)[:max_size]
 
-        images = []
-        # Load each selected image
-        for img_file in selected_files:
-            img_path = os.path.join(training_dir, img_file)
+        def load_image(img_file):
+            img_path = tf.strings.join([training_dir, img_file])
             try:
-                img = load_img(img_path, target_size=image_size, color_mode='rgb')
-                img = img_to_array(img)
-                images.append(img)
-            except Exception as e:
-                print(f"Error loading image {img_path}: {e}")
-        
-        # Return the batch as a numpy array
-        return np.array(images)
+                img = tf.io.read_file(img_path)             # Read the image file
+                img = tf.image.decode_jpeg(img, channels=3) # Decode the image
+                img = tf.image.resize(img, image_size)      # Resize to the target image size
+                img = img / 255.0                           # Normalize the image to [0, 1] range
+                return img
+            except tf.errors.NotFoundError:
+                print(f"File not found: {img_path.numpy()}")
+                return None
+
+        # Load images in parallel
+        images = tf.map_fn(load_image, selected_files, dtype=tf.float32)
+
+        # Return the batch as a tensor
+        return images
     
     def generate_images(self, input_photo, n_images=1):
         return self.generator.predict(input_photo)
 
     def save_generated_image(self, epoch, X_photos, output_dir="images", name="img_gen_temp"):
         # Select random photos for generator input
-        idx_photos = np.random.randint(0, X_photos.shape[0], 1)
-        input_photo = X_photos[idx_photos]
+        idx_photos = tf.random.uniform([1], 0, tf.shape(X_photos)[0], dtype=tf.int32)
+        input_photo = tf.gather(X_photos, idx_photos)
 
         # Ensure the output directory exists
-        os.makedirs(output_dir, exist_ok=True)
-        
+        tf.io.gfile.makedirs(output_dir)
+
         # Generate a single image
         gen_img = self.generate_images(input_photo)[0]  # Take the first generated image
-        
+
         # Rescale image values
-        gen_img = 0.5 * gen_img + 0.5               # Rescale from [-1, 1] to [0, 1]
-        gen_img = (gen_img * 255).astype(np.uint8)  # Rescale from [0, 1] to  [0, 255]
-        
-        # Save the image in the output directory
-        pil_img = Image.fromarray(gen_img, mode='RGB')
+        gen_img = 0.5 * gen_img + 0.5  # Rescale from [-1, 1] to [0, 1]
+        gen_img = tf.clip_by_value(gen_img, 0.0, 1.0)  # Ensure values are in [0, 1] range
+
+        # Convert the tensor to a uint8 format for saving
+        gen_img = tf.image.convert_image_dtype(gen_img, dtype=tf.uint8)
+
+        # Save the image using PIL
+        pil_img = Image.fromarray(gen_img.numpy(), mode='RGB')
         save_path = os.path.join(output_dir, f"{name}_epoch_{epoch}.png")
         pil_img.save(save_path)
         print(f"Saved generated image at: {save_path}")
 
     def train_discriminator(self, half_batch_size, X_paintings, X_photos):
-        # Select random real paintings
-        idx_paintings = np.random.randint(0, X_paintings.shape[0], half_batch_size)
-        real_paintings = X_paintings[idx_paintings]
+        # Select random real paintings and photos
+        idx_paintings = tf.random.uniform([half_batch_size], 0, tf.shape(X_paintings)[0], dtype=tf.int32)
+        real_paintings = tf.gather(X_paintings, idx_paintings)
 
-        # Select random photos for generator input
-        idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
-        input_photos = X_photos[idx_photos]
+        idx_photos = tf.random.uniform([half_batch_size], 0, tf.shape(X_photos)[0], dtype=tf.int32)
+        input_photos = tf.gather(X_photos, idx_photos)
 
         # Generate fake paintings
-        fake_paintings = self.generator.predict(input_photos)
+        fake_paintings = self.generator(input_photos, training=False)
 
-        # Combine real and fake paintings
-        combined_imgs = np.concatenate([real_paintings, fake_paintings], axis=0)
+        # Combine real and fake data
+        combined_imgs = tf.concat([real_paintings, fake_paintings], axis=0)
 
-        # Create corresponding labels
-        real_labels = np.ones((half_batch_size, 1))
-        fake_labels = np.zeros((half_batch_size, 1))
-        combined_labels = np.concatenate([real_labels, fake_labels], axis=0)
+        # Labels for real (1) and fake (0) samples
+        real_labels = tf.ones((half_batch_size, 1), dtype=tf.float32)
+        fake_labels = tf.zeros((half_batch_size, 1), dtype=tf.float32)
+        combined_labels = tf.concat([real_labels, fake_labels], axis=0)
 
-        # Train the discriminator
-        (loss, accuracy) = self.discriminator.train_on_batch(combined_imgs, combined_labels)
+        # Train discriminator
+        loss, accuracy = self.discriminator.train_on_batch(combined_imgs, combined_labels)
         return loss, accuracy
-    
-    def train_generator(self, half_batch_size, X_photos):
-        idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
-        input_photos = X_photos[idx_photos]
-        
-        valid_labels = np.ones((half_batch_size, 1))
-        loss = self.combined.train_on_batch(input_photos, valid_labels)
 
+    def train_generator(self, half_batch_size, X_photos):
+        # Select random photos
+        idx_photos = tf.random.uniform([half_batch_size], 0, tf.shape(X_photos)[0], dtype=tf.int32)
+        input_photos = tf.gather(X_photos, idx_photos)
+
+        # Labels for valid (1) samples
+        valid_labels = tf.ones((half_batch_size, 1), dtype=tf.float32)
+
+        # Train generator via combined model
+        loss = self.combined.train_on_batch(input_photos, valid_labels)
         return loss
 
     def train_model(self, epochs, batch_size=128, output_image_interval=50, save_model_interval=1000, input_dir="data", output_dir="images", print_interval=0):
-        
-        # We divide our batches 50/50 into real and fake images
-        half_batch_size = int(batch_size / 2)
+        half_batch_size = batch_size // 2
 
         print("Loading data...")
-        # ------------------ Load testdata and generator photos ------------------- 
-        X_photos = self.load_training_data(training_dir=f"{input_dir}/photo_jpg", max_size=500, image_size=(self.img_rows, self.img_cols))
-        X_paintings = self.load_training_data(training_dir=f"{input_dir}/monet_jpg", max_size=500, image_size=(self.img_rows, self.img_cols))
-
+        X_photos = self.load_training_data(training_dir=f"{input_dir}/photo_jpg_reduced", max_size=300, image_size=(self.img_rows, self.img_cols))
+        X_paintings = self.load_training_data(training_dir=f"{input_dir}/monet_jpg", max_size=300, image_size=(self.img_rows, self.img_cols))
         print("Done!\nTraining model...")
+
         for epoch in range(epochs):
-            # ------------------ Train Discriminator ------------------- 
-            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)            
-            
-            
-            # ------------------ Train Generator ------------------- 
+            # Train discriminator
+            d_loss, d_accuracy = self.train_discriminator(half_batch_size, X_paintings, X_photos)
+            # Train generator
             g_loss = self.train_generator(half_batch_size, X_photos)
 
-            # ------------------ Output Data from training ------------------- 
+            # Record losses
             self.discriminator_real_losses.append(d_loss)
             self.discriminator_fake_losses.append(d_accuracy)
             self.generator_losses.append(g_loss)
 
-            if(print_interval > 0):
-                # Plot the progress
-                if(epoch % print_interval == 0):
-                    print("------------------------------------------------------")
-                    print(f"                Epoch {epoch}")
-                    print(f"Discriminator real loss:  {d_loss:.5f}")
-                    print(f"Discriminator fake loss:  {d_accuracy:.5f}")
-                    print(f"Generator loss:           {g_loss[0]:.5f}")
-                    print("------------------------------------------------------")
+            # Print progress
+            if print_interval > 0 and epoch % print_interval == 0:
+                print(f"Epoch {epoch} - D Loss: {d_loss:.5f}, D Accuracy: {d_accuracy:.5f}, G Loss: {g_loss[0]:.5f}")
 
-                    # ------------------ Print Predictions for 5 real and fake images ------------------- 
+            # Save generated images periodically
+            if epoch % output_image_interval == 0:
+                self.save_generated_image(epoch, X_photos, output_dir=f"{output_dir}/images", name=f"img_gen_{epoch}")
 
-                    # Get discriminator's predictions for a sample of generated images
-                    idx_photos = np.random.randint(0, X_photos.shape[0], half_batch_size)
-                    input_photos = X_photos[idx_photos]
-                    sample_gen_imgs = self.generator.predict(input_photos, verbose=0)
-                    predictions = self.discriminator.predict(sample_gen_imgs, verbose=0)
-
-                    # Print the first few predictions
-                    print("5 generated images:")
-                    print(predictions.flatten())  # Flatten to make it easier to read
-
-                    # Also sample real images and get their predicions
-                    idx = np.random.randint(0, X_paintings.shape[0], 5)
-                    sample_real_imgs = X_paintings[idx]
-                    predictions = self.discriminator.predict(sample_real_imgs, verbose=0)
-
-                    # Print the first few predictions
-                    print("5 real images:")
-                    print(predictions.flatten())  # Flatten to make it easier to read
-                    print("------------------------------------------------------")
-
-
-                # If at save interval, save generated images
-                if (epoch % output_image_interval == 0 and output_image_interval > 0):
-                    self.save_generated_image(epoch, X_photos, output_dir=f"{output_dir}/images", name=f"img_gen_{epoch}")
-
-                # If at save interval, save the model
-                if (epoch % save_model_interval == 0 and save_model_interval > 0):
-                    self.save_model(path=f"{output_dir}/models", epoch=epoch)
+            # Save model periodically
+            if epoch % save_model_interval == 0:
+                self.save_model(path=f"{output_dir}/models", epoch=epoch)
