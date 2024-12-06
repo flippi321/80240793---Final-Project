@@ -1,7 +1,6 @@
 import os
 from PIL import Image
 import numpy as np
-from tensorflow import keras
 from keras._tf_keras.keras.layers import Input, BatchNormalization, GaussianNoise, Dense, Reshape, Flatten, LeakyReLU, UpSampling2D, Conv2D, Conv2DTranspose, Dropout, Activation, AveragePooling2D
 from keras._tf_keras.keras.models import Sequential, Model, load_model
 from keras._tf_keras.keras.utils import img_to_array, load_img
@@ -257,9 +256,6 @@ class BDI_GAN():
 
 
             # ------------------ Output Data from training ------------------- 
-
-            print(gen_loss)
-
             if(print_interval > 0):
                 # Plot the progress
                 if(epoch % print_interval == 0):
@@ -267,7 +263,7 @@ class BDI_GAN():
                     print(f"                  Epoch {epoch}")
                     print(f"Discriminator real loss:  {dis_loss_real:.5f}")
                     print(f"Discriminator fake loss:  {dis_loss_fake:.5f}")
-                    print(f"Generator loss:           {gen_loss:.5f}")
+                    print(f"Generator loss:           {gen_loss[0]:.5f}")
                     print("------------------------------------------------------")
 
                     # ------------------ Print Predictions for 5 real and fake images ------------------- 
@@ -315,8 +311,9 @@ class BDI_GAN():
         combined_imgs = np.concatenate([imgs, gen_imgs], axis=0)
 
         # Create corresponding labels for real and fake images
-        real_labels = np.ones((half_batch_size, 1))
-        fake_labels = np.zeros((half_batch_size, 1))
+        # Add label smoothing to the real labels
+        real_labels = np.ones((half_batch_size, 1)) - 0.05
+        fake_labels = np.zeros((half_batch_size, 1)) + 0.05
         combined_labels = np.concatenate([real_labels, fake_labels], axis=0)
 
         # Shuffle the combined dataset
