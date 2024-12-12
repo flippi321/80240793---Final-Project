@@ -1,4 +1,5 @@
 output/
 code/__pycache__/
 data/photo_jpg_reduced
+data/data.zip
 unused
